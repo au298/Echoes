@@ -6,15 +6,16 @@
 //
 
 import SwiftUI
+import CoreData
 
 @main
 struct EchoesApp: App {
-    @StateObject private var photoStore = PhotoStore()
+    private let persistenceController = PersistenceController.shared
 
     var body: some Scene {
         WindowGroup {
             RootView()
-                .environmentObject(photoStore)
+                .environment(\.managedObjectContext, persistenceController.container.viewContext)
         }
     }
 }

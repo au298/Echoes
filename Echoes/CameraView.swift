@@ -9,76 +9,33 @@ import SwiftUI
 import CoreLocation
 import UIKit
 import AVFoundation
+import CoreData
 import Combine
 
 struct CameraView: View {
-    @EnvironmentObject var photoStore: PhotoStore
+    @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var locationManager = LocationManager()
     @StateObject private var cameraService = CameraService()
     @State private var showCameraUnavailableAlert = false
     @State private var showLocationUnavailableAlert = false
     @State private var capturedImage: UIImage?
+    @State private var pendingImageData: Data?
+    @State private var pendingCapturedAt: Date?
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            GeometryReader { proxy in
-                CameraPreview(session: cameraService.session)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .background(.black)
-            }
-            .ignoresSafeArea()
-
-            if let capturedImage {
-                VStack {
-                    HStack {
-                        Image(uiImage: capturedImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 96, height: 96)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(.white.opacity(0.7), lineWidth: 2)
-                            )
-                            .shadow(radius: 6)
-                        Spacer()
-                    }
-                    Spacer()
-                }
-                .padding(.leading, 16)
-                .padding(.top, 24)
-            }
-
-            Button {
-                cameraService.capturePhoto()
-            } label: {
-                Circle()
-                    .fill(.white)
-                    .frame(width: 72, height: 72)
-                    .overlay(
-                        Circle()
-                            .stroke(.black.opacity(0.2), lineWidth: 2)
-                            .frame(width: 80, height: 80)
-                    )
-            }
-            .padding(.bottom, 32)
-            .disabled(!cameraService.isReady)
-            .opacity(cameraService.isReady ? 1 : 0.4)
+            CameraPreviewLayer(session: cameraService.session)
+            CapturedThumbnail(image: capturedImage)
+            CaptureButton(isEnabled: cameraService.isReady, action: capture)
         }
-        .onAppear {
-            locationManager.requestLocation()
-            cameraService.requestAccessAndConfigure { available in
-                if !available {
-                    showCameraUnavailableAlert = true
-                }
-            }
+        .ignoresSafeArea()
+        .onAppear(perform: startCamera)
+        .onDisappear(perform: clearCapturedPreview)
+        .onChange(of: locationManager.location) { _, _ in saveIfPossible() }
+        .onReceive(locationManager.$locationError) { error in
+            handleLocationError(error)
         }
-        .onChange(of: cameraService.lastImage) { _, image in
-            guard let image else { return }
-            capturedImage = image
-            handleCapturedImage(image)
-            cameraService.clearLastImage()
-        }
+        .onChange(of: cameraService.lastImage) { _, image in handleNewImage(image) }
         .alert("カメラが使えません", isPresented: $showCameraUnavailableAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -91,15 +48,123 @@ struct CameraView: View {
         }
     }
 
-    func handleCapturedImage(_ image: UIImage) {
-        guard let location = locationManager.location else {
-            showLocationUnavailableAlert = true
-            return
+    private func startCamera() {
+        locationManager.requestLocation()
+        cameraService.requestAccessAndConfigure { available in
+            if !available {
+                showCameraUnavailableAlert = true
+            }
         }
+    }
 
+    private func clearCapturedPreview() {
+        capturedImage = nil
+        cameraService.clearLastImage()
+    }
+
+    private func capture() {
+        pendingCapturedAt = Date()
+        locationManager.requestLocation()
+        cameraService.capturePhoto()
+    }
+
+    private func handleLocationError(_ error: Error?) {
+        guard error != nil else { return }
+        showLocationUnavailableAlert = true
+        pendingImageData = nil
+        pendingCapturedAt = nil
+    }
+
+    private func handleNewImage(_ image: UIImage?) {
+        guard let image else { return }
+        capturedImage = image
+        handleCapturedImage(image)
+        cameraService.clearLastImage()
+    }
+
+    func handleCapturedImage(_ image: UIImage) {
         guard let data = image.jpegData(compressionQuality: 0.8) else { return }
+        pendingImageData = data
+        saveIfPossible()
+    }
 
-        photoStore.add(imageData: data, location: location)
+    private func saveIfPossible() {
+        guard let data = pendingImageData, let location = locationManager.location else { return }
+
+        let echo = Echo(context: viewContext)
+        echo.id = UUID()
+        echo.imageData = data
+        echo.createdAt = pendingCapturedAt ?? Date()
+        echo.latitude = location.coordinate.latitude
+        echo.longitude = location.coordinate.longitude
+
+        do {
+            try viewContext.save()
+            pendingImageData = nil
+            pendingCapturedAt = nil
+        } catch {
+            print("Failed to save echo:", error.localizedDescription)
+        }
+    }
+}
+
+private struct CameraPreviewLayer: View {
+    let session: AVCaptureSession
+
+    var body: some View {
+        GeometryReader { proxy in
+            CameraPreview(session: session)
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .background(.black)
+        }
+    }
+}
+
+private struct CapturedThumbnail: View {
+    let image: UIImage?
+
+    var body: some View {
+        if let image {
+            VStack {
+                HStack {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 96, height: 96)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(.white.opacity(0.7), lineWidth: 2)
+                        )
+                        .shadow(radius: 6)
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(.leading, 16)
+            .padding(.top, 24)
+        }
+    }
+}
+
+private struct CaptureButton: View {
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Circle()
+                .fill(.white)
+                .frame(width: 72, height: 72)
+                .overlay(
+                    Circle()
+                        .stroke(.black.opacity(0.2), lineWidth: 2)
+                        .frame(width: 80, height: 80)
+                )
+        }
+        .padding(.bottom, 32)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.4)
     }
 }
 
@@ -213,5 +278,5 @@ final class CameraService: NSObject, ObservableObject, AVCapturePhotoCaptureDele
 
 #Preview {
     CameraView()
-        .environmentObject(PhotoStore())
+        .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }

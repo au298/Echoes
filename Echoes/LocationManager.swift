@@ -13,6 +13,7 @@ final class LocationManager: NSObject, ObservableObject {
     private let manager = CLLocationManager()
 
     @Published var location: CLLocation?
+    @Published var locationError: Error?
 
     override init() {
         super.init()
@@ -38,6 +39,7 @@ extension LocationManager: CLLocationManagerDelegate {
         _ manager: CLLocationManager,
         didFailWithError error: Error
     ) {
+        locationError = error
         print("Location error:", error.localizedDescription)
     }
 }

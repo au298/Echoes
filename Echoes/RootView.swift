@@ -6,13 +6,15 @@
 //
 
 import SwiftUI
+import ARKit
+import CoreData
 
 struct RootView: View {
     @State private var selectedTab: Tab = .map
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            CameraView()
+            ScanOrCameraView()
                 .tag(Tab.camera)
                 .tabItem {
                     Label("カメラ", systemImage: "camera")
@@ -33,6 +35,20 @@ struct RootView: View {
     }
 }
 
+private struct ScanOrCameraView: View {
+    var body: some View {
+        if supportsLiDARScan() {
+            LidarScanView()
+        } else {
+            CameraView()
+        }
+    }
+
+    private func supportsLiDARScan() -> Bool {
+        ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
+    }
+}
+
 enum Tab {
     case camera
     case map
@@ -41,5 +57,5 @@ enum Tab {
 
 #Preview {
     RootView()
-        .environmentObject(PhotoStore())
+        .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
