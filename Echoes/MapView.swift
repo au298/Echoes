@@ -8,6 +8,7 @@
 import SwiftUI
 import MapKit
 import CoreData
+import QuickLook
 
 enum MapSegment: String, CaseIterable, Identifiable {
     case `public` = "Public"
@@ -106,7 +107,11 @@ private struct EchoDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let data = echo.imageData, let image = UIImage(data: data) {
+                if let scanPath = echo.scanLocalURL {
+                    QuickLookPreview(url: URL(fileURLWithPath: scanPath))
+                        .frame(height: 280)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                } else if let data = echo.imageData, let image = UIImage(data: data) {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
@@ -143,6 +148,12 @@ private struct EchoDetailView: View {
                                 .multilineTextAlignment(.leading)
                         }
                     }
+                    if let scanRemoteURL = echo.scanRemoteURL, !scanRemoteURL.isEmpty {
+                        LabeledContent("共有URL") {
+                            Text(scanRemoteURL)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }
                 }
 
                 Button(role: .destructive) {
@@ -170,6 +181,44 @@ private struct EchoDetailView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+private struct QuickLookPreview: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let controller = QLPreviewController()
+        controller.dataSource = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {
+        context.coordinator.url = url
+        uiViewController.reloadData()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(url: url)
+    }
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        var url: URL
+
+        init(url: URL) {
+            self.url = url
+        }
+
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+            1
+        }
+
+        func previewController(
+            _ controller: QLPreviewController,
+            previewItemAt index: Int
+        ) -> QLPreviewItem {
+            url as NSURL
+        }
     }
 }
 #endif
