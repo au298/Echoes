@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct EchoesApp: App {
+    @StateObject private var photoStore = PhotoStore()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environmentObject(photoStore)
         }
     }
 }
