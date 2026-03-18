@@ -14,7 +14,11 @@ struct PersistenceController {
     let container: NSPersistentContainer
 
     init(inMemory: Bool = false) {
-        container = NSPersistentContainer(name: "EchoesOfThePast")
+        guard let modelURL = Bundle.main.url(forResource: "EchoesOfThePast", withExtension: "momd"),
+              let model = NSManagedObjectModel(contentsOf: modelURL) else {
+            fatalError("Core Data model 'EchoesOfThePast.momd' が見つかりません。")
+        }
+        container = NSPersistentContainer(name: "EchoesOfThePast", managedObjectModel: model)
 
         if inMemory {
             container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
