@@ -222,7 +222,6 @@ private struct LidarARViewContainer: UIViewRepresentable {
 
     func makeUIView(context: Context) -> ARView {
         let view = ARView(frame: .zero)
-        view.debugOptions = [.showSceneUnderstanding]
         view.automaticallyConfigureSession = false
         context.coordinator.arView = view
         context.coordinator.runPreviewIfPossible()

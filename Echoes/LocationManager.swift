@@ -32,7 +32,7 @@ extension LocationManager: CLLocationManagerDelegate {
         _ manager: CLLocationManager,
         didUpdateLocations locations: [CLLocation]
     ) {
-        location = locations.first
+        location = locations.last
     }
     
     func locationManager(
