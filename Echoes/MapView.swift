@@ -89,8 +89,6 @@ struct MapView: View {
             .pickerStyle(.segmented)
             .padding()
             .background(.ultraThinMaterial)
-//            .clipShape(RoundedRectangle(cornerRadius: 1))
-//            .padding(.top, 8)
         }
         .sheet(item: $selectedEcho) { echo in
             EchoDetailView(echo: echo)
