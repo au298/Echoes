@@ -97,7 +97,7 @@ struct CameraView: View {
         cameraService.clearLastImage()
     }
 
-    func handleCapturedImage(_ image: UIImage) {
+    private func handleCapturedImage(_ image: UIImage) {
         guard let data = image.jpegData(compressionQuality: 0.8) else { return }
         pendingImageData = data
         saveIfPossible()

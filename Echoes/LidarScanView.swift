@@ -134,7 +134,6 @@ struct LidarScanView: View {
         canStop = false
         startToken += 1
         exportError = nil
-        print("[Scan] startScan")
         locationManager.requestLocation()
         startMinDurationTimer()
     }
@@ -143,7 +142,6 @@ struct LidarScanView: View {
         guard canStop else { return }
         isScanning = false
         canStop = false
-        print("[Scan] stopScan requested")
         pauseToken += 1
         cancelMinDurationTimer()
         isExporting = true
@@ -178,13 +176,11 @@ struct LidarScanView: View {
 
     private func saveScan(url: URL) {
         guard let location = locationManager.location else {
-            print("[Scan] location missing, pending save. url=\(url.path)")
             pendingScanURL = url
             showLocationUnavailableAlert = true
             return
         }
 
-        print("[Scan] saving scan. url=\(url.path) lat=\(location.coordinate.latitude) lon=\(location.coordinate.longitude)")
         let echo = Echo(context: viewContext)
         echo.id = UUID()
         echo.scanLocalURL = url.path
@@ -195,7 +191,6 @@ struct LidarScanView: View {
         do {
             try viewContext.save()
             pendingScanURL = nil
-            print("[Scan] save success")
         } catch {
             print("Failed to save scan:", error.localizedDescription)
         }
@@ -204,7 +199,6 @@ struct LidarScanView: View {
     private func savePendingScanIfPossible() {
         guard let url = pendingScanURL else { return }
         guard locationManager.location != nil else { return }
-        print("[Scan] location arrived, saving pending scan")
         saveScan(url: url)
     }
 }
@@ -222,7 +216,6 @@ private struct LidarARViewContainer: UIViewRepresentable {
 
     func makeUIView(context: Context) -> ARView {
         let view = ARView(frame: .zero)
-        view.debugOptions = [.showSceneUnderstanding]
         view.automaticallyConfigureSession = false
         context.coordinator.arView = view
         context.coordinator.runPreviewIfPossible()
@@ -259,28 +252,24 @@ private struct LidarARViewContainer: UIViewRepresentable {
         func startIfNeeded() {
             guard startToken != lastStartToken else { return }
             lastStartToken = startToken
-            print("[Scan] AR session start")
             runScanIfPossible()
         }
 
         func stopIfNeeded() {
             guard stopToken != lastStopToken else { return }
             lastStopToken = stopToken
-            print("[Scan] AR session stop -> preview")
             runPreviewIfPossible()
         }
 
         func pauseIfNeeded() {
             guard pauseToken != lastPauseToken else { return }
             lastPauseToken = pauseToken
-            print("[Scan] AR session pause")
             arView?.session.pause()
         }
 
         func exportIfNeeded() {
             guard exportToken != lastExportToken else { return }
             lastExportToken = exportToken
-            print("[Scan] export start")
             exportCurrentMesh()
         }
 
@@ -303,25 +292,21 @@ private struct LidarARViewContainer: UIViewRepresentable {
 
         private func exportCurrentMesh() {
             guard let arView else {
-                print("[Scan] export failed: missing ARView")
                 onExport(.failure(ScanExportError.missingARView))
                 return
             }
             guard let frame = arView.session.currentFrame else {
-                print("[Scan] export failed: missing frame")
                 onExport(.failure(ScanExportError.missingFrame))
                 return
             }
 
             let meshAnchors = frame.anchors.compactMap { $0 as? ARMeshAnchor }
-            guard let anchor = meshAnchors.max(by: { $0.geometry.vertices.count < $1.geometry.vertices.count }) else {
-                print("[Scan] export failed: no mesh anchors")
+            guard !meshAnchors.isEmpty else {
                 onExport(.failure(ScanExportError.noMeshFound))
                 return
             }
 
             let scene = SCNScene()
-            let node = SCNNode()
 
             let viewportSize = arView.bounds.size == .zero ? UIScreen.main.bounds.size : arView.bounds.size
             let orientation = arView.window?.windowScene?.interfaceOrientation ?? .portrait
@@ -329,22 +314,23 @@ private struct LidarARViewContainer: UIViewRepresentable {
                 MeshColorInfo(image: $0, viewportSize: viewportSize, orientation: orientation, camera: frame.camera)
             }
 
-            node.geometry = anchor.geometry.toSCNGeometry(
-                colorInfo: colorInfo,
-                transform: anchor.transform
-            )
-            node.transform = SCNMatrix4(anchor.transform)
-            scene.rootNode.addChildNode(node)
+            for anchor in meshAnchors {
+                let node = SCNNode()
+                node.geometry = anchor.geometry.toSCNGeometry(
+                    colorInfo: colorInfo,
+                    transform: anchor.transform
+                )
+                node.transform = SCNMatrix4(anchor.transform)
+                scene.rootNode.addChildNode(node)
+            }
 
             do {
                 let scansURL = try FileManager.default.ensureScansDirectory()
                 let fileName = "scan-\(UUID().uuidString).usdz"
                 let url = scansURL.appendingPathComponent(fileName)
                 try scene.write(to: url, options: nil, delegate: nil, progressHandler: nil)
-                print("[Scan] export success: \(url.path)")
                 onExport(.success(url))
             } catch {
-                print("[Scan] export failed: \(error.localizedDescription)")
                 onExport(.failure(error))
             }
         }
@@ -543,7 +529,6 @@ private extension CGImage {
         return data
     }
 }
-
 
 #Preview {
     LidarScanView()

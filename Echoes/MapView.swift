@@ -11,9 +11,9 @@ import CoreData
 import QuickLook
 
 enum MapSegment: String, CaseIterable, Identifiable {
-    case `public` = "Public"
-    case `private` = "Private"
-    
+    case `public` = "パブリック"
+    case `private` = "プライベート"
+
     var id: String { self.rawValue }
 }
 
@@ -89,8 +89,6 @@ struct MapView: View {
             .pickerStyle(.segmented)
             .padding()
             .background(.ultraThinMaterial)
-//            .clipShape(RoundedRectangle(cornerRadius: 1))
-//            .padding(.top, 8)
         }
         .sheet(item: $selectedEcho) { echo in
             EchoDetailView(echo: echo)
@@ -98,7 +96,6 @@ struct MapView: View {
     }
 }
 
-#if DEBUG
 private struct EchoDetailView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.dismiss) private var dismiss
@@ -175,12 +172,16 @@ private struct EchoDetailView: View {
         .presentationDetents([.medium, .large])
     }
 
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
     private func dateText(_ date: Date?) -> String {
         guard let date else { return "不明" }
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return Self.dateFormatter.string(from: date)
     }
 }
 
@@ -221,7 +222,6 @@ private struct QuickLookPreview: UIViewControllerRepresentable {
         }
     }
 }
-#endif
 
 #Preview {
     MapView()
