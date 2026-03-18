@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import ARKit
 import CoreData
 
 struct RootView: View {
@@ -14,7 +13,7 @@ struct RootView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            ScanOrCameraView()
+            CameraView()
                 .tag(Tab.camera)
                 .tabItem {
                     Label("カメラ", systemImage: "camera")
@@ -25,6 +24,12 @@ struct RootView: View {
                 .tabItem {
                     Label("マップ", systemImage: "map")
                 }
+
+            ARBoardView()
+                .tag(Tab.ar)
+                .tabItem {
+                    Label("AR", systemImage: "arkit")
+                }
             
             SettingsView()
                 .tag(Tab.settings)
@@ -32,27 +37,26 @@ struct RootView: View {
                     Label("設定", systemImage: "gear")
                 }
         }
-    }
-}
-
-private struct ScanOrCameraView: View {
-    var body: some View {
-        if supportsLiDARScan() {
-            LidarScanView()
-        } else {
-            CameraView()
+        .onChange(of: selectedTab) { _, newValue in
+            if newValue == .camera {
+                NotificationCenter.default.post(name: .cameraSessionStart, object: nil)
+            } else {
+                NotificationCenter.default.post(name: .cameraSessionStop, object: nil)
+            }
         }
-    }
-
-    private func supportsLiDARScan() -> Bool {
-        ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
     }
 }
 
 enum Tab {
     case camera
     case map
+    case ar
     case settings
+}
+
+extension Notification.Name {
+    static let cameraSessionStart = Notification.Name("cameraSessionStart")
+    static let cameraSessionStop = Notification.Name("cameraSessionStop")
 }
 
 #Preview {

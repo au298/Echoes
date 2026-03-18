@@ -25,6 +25,15 @@ final class LocationManager: NSObject, ObservableObject {
         manager.requestWhenInUseAuthorization()
         manager.requestLocation()
     }
+
+    func startUpdating() {
+        manager.requestWhenInUseAuthorization()
+        manager.startUpdatingLocation()
+    }
+
+    func stopUpdating() {
+        manager.stopUpdatingLocation()
+    }
 }
 
 extension LocationManager: CLLocationManagerDelegate {

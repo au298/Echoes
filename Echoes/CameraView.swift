@@ -23,14 +23,27 @@ struct CameraView: View {
     @State private var pendingCapturedAt: Date?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            CameraPreviewLayer(session: cameraService.session)
-            CapturedThumbnail(image: capturedImage)
-            CaptureButton(isEnabled: cameraService.isReady, action: capture)
+        GeometryReader { proxy in
+            ZStack(alignment: .bottom) {
+                CameraPreviewLayer(session: cameraService.session)
+                CapturedThumbnail(image: capturedImage)
+                CaptureButton(isEnabled: cameraService.isReady, action: capture)
+                    .padding(.bottom, 32 + proxy.safeAreaInsets.bottom)
+            }
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea()
         .onAppear(perform: startCamera)
         .onDisappear(perform: clearCapturedPreview)
+        .onReceive(NotificationCenter.default.publisher(for: .cameraSessionStop)) { _ in
+            cameraService.stopSession(release: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cameraSessionStart)) { _ in
+            cameraService.requestAccessAndConfigure { available in
+                if !available {
+                    showCameraUnavailableAlert = true
+                }
+            }
+        }
         .onChange(of: locationManager.location) { _, _ in saveIfPossible() }
         .onReceive(locationManager.$locationError) { error in
             handleLocationError(error)
@@ -55,11 +68,13 @@ struct CameraView: View {
                 showCameraUnavailableAlert = true
             }
         }
+        cameraService.startSessionIfNeeded()
     }
 
     private func clearCapturedPreview() {
         capturedImage = nil
         cameraService.clearLastImage()
+        cameraService.stopSession()
     }
 
     private func capture() {
@@ -194,11 +209,13 @@ final class PreviewView: UIView {
 final class CameraService: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     let session = AVCaptureSession()
     private let output = AVCapturePhotoOutput()
+    private let sessionQueue = DispatchQueue(label: "echoes.camera.session")
 
     @Published private(set) var isReady = false
     @Published private(set) var lastImage: UIImage?
 
     private var isConfigured = false
+    private var isRunning = false
 
     func requestAccessAndConfigure(completion: @escaping (Bool) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -231,39 +248,83 @@ final class CameraService: NSObject, ObservableObject, AVCapturePhotoCaptureDele
         lastImage = nil
     }
 
+    func startSessionIfNeeded() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            guard self.isConfigured else { return }
+            guard !self.isRunning else { return }
+            self.isRunning = true
+            self.session.startRunning()
+            DispatchQueue.main.async {
+                self.isReady = true
+            }
+        }
+    }
+
+    func stopSession(release: Bool = false) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            guard self.isRunning else { return }
+            self.isRunning = false
+            self.session.stopRunning()
+            DispatchQueue.main.async {
+                self.isReady = false
+            }
+            if release {
+                self.session.beginConfiguration()
+                self.session.inputs.forEach { self.session.removeInput($0) }
+                self.session.outputs.forEach { self.session.removeOutput($0) }
+                self.session.commitConfiguration()
+                self.isConfigured = false
+            }
+        }
+    }
+
     private func configureSessionIfNeeded() {
         guard !isConfigured else { return }
         isConfigured = true
 
-        session.beginConfiguration()
-        session.sessionPreset = .photo
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.session.beginConfiguration()
+            self.session.sessionPreset = .photo
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            session.commitConfiguration()
-            return
-        }
-
-        do {
-            let input = try AVCaptureDeviceInput(device: device)
-            if session.canAddInput(input) {
-                session.addInput(input)
+            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+                self.session.commitConfiguration()
+                return
             }
-            if session.canAddOutput(output) {
-                session.addOutput(output)
+
+            do {
+                try self.configureAutofocus(for: device)
+                let input = try AVCaptureDeviceInput(device: device)
+                if self.session.canAddInput(input) {
+                    self.session.addInput(input)
+                }
+                if self.session.canAddOutput(self.output) {
+                    self.session.addOutput(self.output)
+                }
+            } catch {
+                self.session.commitConfiguration()
+                return
             }
-        } catch {
-            session.commitConfiguration()
-            return
-        }
 
-        session.commitConfiguration()
-
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.session.startRunning()
+            self.session.commitConfiguration()
+            self.startSessionIfNeeded()
             DispatchQueue.main.async {
-                self?.isReady = true
+                self.isReady = true
             }
         }
+    }
+
+    private func configureAutofocus(for device: AVCaptureDevice) throws {
+        try device.lockForConfiguration()
+        if device.isFocusModeSupported(.continuousAutoFocus) {
+            device.focusMode = .continuousAutoFocus
+        }
+        if device.isExposureModeSupported(.continuousAutoExposure) {
+            device.exposureMode = .continuousAutoExposure
+        }
+        device.unlockForConfiguration()
     }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
