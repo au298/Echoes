@@ -314,14 +314,13 @@ private struct LidarARViewContainer: UIViewRepresentable {
             }
 
             let meshAnchors = frame.anchors.compactMap { $0 as? ARMeshAnchor }
-            guard let anchor = meshAnchors.max(by: { $0.geometry.vertices.count < $1.geometry.vertices.count }) else {
+            guard !meshAnchors.isEmpty else {
                 print("[Scan] export failed: no mesh anchors")
                 onExport(.failure(ScanExportError.noMeshFound))
                 return
             }
 
             let scene = SCNScene()
-            let node = SCNNode()
 
             let viewportSize = arView.bounds.size == .zero ? UIScreen.main.bounds.size : arView.bounds.size
             let orientation = arView.window?.windowScene?.interfaceOrientation ?? .portrait
@@ -329,12 +328,15 @@ private struct LidarARViewContainer: UIViewRepresentable {
                 MeshColorInfo(image: $0, viewportSize: viewportSize, orientation: orientation, camera: frame.camera)
             }
 
-            node.geometry = anchor.geometry.toSCNGeometry(
-                colorInfo: colorInfo,
-                transform: anchor.transform
-            )
-            node.transform = SCNMatrix4(anchor.transform)
-            scene.rootNode.addChildNode(node)
+            for anchor in meshAnchors {
+                let node = SCNNode()
+                node.geometry = anchor.geometry.toSCNGeometry(
+                    colorInfo: colorInfo,
+                    transform: anchor.transform
+                )
+                node.transform = SCNMatrix4(anchor.transform)
+                scene.rootNode.addChildNode(node)
+            }
 
             do {
                 let scansURL = try FileManager.default.ensureScansDirectory()

@@ -98,7 +98,6 @@ struct MapView: View {
     }
 }
 
-#if DEBUG
 private struct EchoDetailView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.dismiss) private var dismiss
@@ -221,7 +220,6 @@ private struct QuickLookPreview: UIViewControllerRepresentable {
         }
     }
 }
-#endif
 
 #Preview {
     MapView()
